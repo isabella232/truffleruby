@@ -975,7 +975,7 @@ class Array
     end
 
     if count and count < 0
-      raise ArgumentError, 'count must be greater than 0'
+      raise ArgumentError, 'count must be >= 0'
     end
 
     rng = options[:random] if options
@@ -996,9 +996,9 @@ class Array
       return [at(rng.rand(size))]
     when 2
       i = rng.rand(size)
-      j = rng.rand(size)
-      if i == j
-        j = i == 0 ? i + 1 : i - 1
+      j = rng.rand(size - 1)
+      if j >= i
+        j += 1
       end
       return [at(i), at(j)]
     else
@@ -1007,67 +1007,93 @@ class Array
   end
 
   def sample_many(count, rng)
-    if size / count > 3
-      abandon = false
+    swap = false
+    quad = false # three implementations
 
+    if count <= 70 # choice determined experimentally
+      if 2.0 * size / count  <= count  + 13
+        swap = true
+      else
+        quad = true
+      end
+    else
+      if size <= -1100.0 + 59.5 * count
+        swap = true
+      end
+    end
+
+    if swap
+      result = Array.new(self)
+
+      count.times do |c|
+        result.__send__ :swap, c, rng.rand(size)
+      end
+
+      count == size ? result : result[0, count]
+    else
       result = Array.new count
       i = 1
 
       result[0] = rng.rand(size)
-      while i < count
-        k = rng.rand(size)
 
-        spin = false
-        spin_count = 0
+      if quad #quadratic time due to linear time collision check but low overhead
+        while i < count
+          k = rng.rand(size)
 
-        while true # rubocop:disable Lint/LiteralAsCondition
-          j = 0
-          while j < i
-            if k == result[j]
-              spin = true
-              break
+          spin = false
+
+          while true # rubocop:disable Lint/LiteralAsCondition
+            j = 0
+            while j < i
+              if k == result[j]
+                spin = true
+                break
+              end
+
+              j += 1
             end
 
-            j += 1
-          end
-
-          if spin
-            if (spin_count += 1) > 100
-              abandon = true
+            if spin
+              k = rng.rand(size)
+              spin = false
+            else
               break
             end
-
-            k = rng.rand(size)
-          else
-            break
           end
+
+          result[i] = k
+
+          i += 1
         end
+      else # use hash for constant time collision check but higher overhead
+        result_set = { result[0] => 0 }
 
-        break if abandon
+        while i < count
+          k = rng.rand(size)
 
-        result[i] = k
+          while true # rubocop:disable Lint/LiteralAsCondition
+            if result_set.include?(k)
+              k = rng.rand(size)
+            else
+              break
+            end
+          end
 
+          result[i] = k
+          result_set[i] = k
+
+          i += 1
+        end
+      end
+
+      i = 0
+      while i < count
+        result[i] = at result[i]
         i += 1
       end
 
-      unless abandon
-        i = 0
-        while i < count
-          result[i] = at result[i]
-          i += 1
-        end
-
-        return result
-      end
+      result
     end
-
-    result = Array.new(self)
-
-    count.times do |c|
-      result.__send__ :swap, c, rng.rand(size)
-    end
-
-    count == size ? result : result[0, count]
   end
   private :sample_many
 
