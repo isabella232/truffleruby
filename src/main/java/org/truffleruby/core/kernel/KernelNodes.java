@@ -52,6 +52,7 @@ import org.truffleruby.core.format.FormatExceptionTranslator;
 import org.truffleruby.core.format.exceptions.FormatException;
 import org.truffleruby.core.format.exceptions.InvalidFormatException;
 import org.truffleruby.core.format.printf.PrintfCompiler;
+import org.truffleruby.core.hash.HashOperations;
 import org.truffleruby.core.kernel.KernelNodesFactory.CopyNodeFactory;
 import org.truffleruby.core.kernel.KernelNodesFactory.GetMethodObjectNodeGen;
 import org.truffleruby.core.kernel.KernelNodesFactory.SameOrEqualNodeFactory;
@@ -377,11 +378,11 @@ public abstract class KernelNodes {
 
         @Specialization
         protected boolean blockGiven(VirtualFrame frame,
-                @Cached("create(nil)") FindAndReadDeclarationVariableNode readNode,
+                @Cached FindAndReadDeclarationVariableNode readNode,
                 @Cached ConditionProfile blockProfile) {
             MaterializedFrame callerFrame = callerFrameNode.execute(frame);
             return blockProfile
-                    .profile(readNode.execute(callerFrame, TranslatorEnvironment.METHOD_BLOCK_NAME) != nil);
+                    .profile(readNode.execute(callerFrame, TranslatorEnvironment.METHOD_BLOCK_NAME, nil) != nil);
         }
     }
 
@@ -785,6 +786,7 @@ public abstract class KernelNodes {
             return callNode.call(RubyArguments.pack(
                     parentFrame,
                     null,
+                    null,
                     method,
                     null,
                     target,
@@ -902,31 +904,36 @@ public abstract class KernelNodes {
     @CoreMethod(names = "hash")
     public abstract static class HashNode extends CoreMethodArrayArgumentsNode {
 
-        private static final int CLASS_SALT = 55927484; // random number, stops hashes for similar values but different classes being the same, static because we want deterministic hashes
+
+        public static HashNode create() {
+            return KernelNodesFactory.HashNodeFactory.create(null);
+        }
+
+        public abstract Object execute(Object value);
 
         @Specialization
         protected long hash(int value) {
-            return getContext().getHashing(this).hash(CLASS_SALT, value);
+            return HashOperations.hashLong(value, getContext(), this);
         }
 
         @Specialization
         protected long hash(long value) {
-            return getContext().getHashing(this).hash(CLASS_SALT, value);
+            return HashOperations.hashLong(value, getContext(), this);
         }
 
         @Specialization
         protected long hash(double value) {
-            return getContext().getHashing(this).hash(CLASS_SALT, Double.doubleToRawLongBits(value));
+            return HashOperations.hashDouble(value, getContext(), this);
         }
 
         @Specialization
         protected long hash(boolean value) {
-            return getContext().getHashing(this).hash(CLASS_SALT, Boolean.valueOf(value).hashCode());
+            return HashOperations.hashBoolean(value, getContext(), this);
         }
 
         @Specialization
         protected long hashBignum(RubyBignum value) {
-            return getContext().getHashing(this).hash(CLASS_SALT, BigIntegerOps.hashCode(value));
+            return HashOperations.hashBignum(value, getContext(), this);
         }
 
         @TruffleBoundary
@@ -1159,13 +1166,13 @@ public abstract class KernelNodes {
         @TruffleBoundary
         @Specialization
         protected RubyProc lambda(NotProvided block,
-                @Cached("create(nil)") FindAndReadDeclarationVariableNode readNode) {
+                @Cached FindAndReadDeclarationVariableNode readNode) {
             final MaterializedFrame parentFrame = getContext()
                     .getCallStack()
                     .getCallerFrameIgnoringSend(FrameAccess.MATERIALIZE)
                     .materialize();
             Object parentBlock = readNode
-                    .execute(parentFrame, TranslatorEnvironment.METHOD_BLOCK_NAME);
+                    .execute(parentFrame, TranslatorEnvironment.METHOD_BLOCK_NAME, nil);
 
             if (parentBlock == nil) {
                 throw new RaiseException(
@@ -1553,6 +1560,7 @@ public abstract class KernelNodes {
         @Child private InternalRespondToNode dispatch;
         @Child private InternalRespondToNode dispatchIgnoreVisibility;
         @Child private InternalRespondToNode dispatchRespondToMissing;
+        @Child private ReadCallerFrameNode readCallerFrame;
         @Child private DispatchNode respondToMissingNode;
         @Child private BooleanCastNode booleanCastNode;
         private final ConditionProfile ignoreVisibilityProfile = ConditionProfile.create();
@@ -1565,6 +1573,8 @@ public abstract class KernelNodes {
             dispatchRespondToMissing = InternalRespondToNode.create();
         }
 
+        /** Callers should pass null for the frame here, unless they want to use refinements and can ensure the direct
+         * caller is a Ruby method */
         public abstract boolean executeDoesRespondTo(VirtualFrame frame, Object object, Object name,
                 boolean includeProtectedAndPrivate);
 
@@ -1581,6 +1591,7 @@ public abstract class KernelNodes {
                 boolean includeProtectedAndPrivate,
                 @Cached ToJavaStringNode toJavaString) {
             final boolean ret;
+            useCallerRefinements(frame);
 
             if (ignoreVisibilityProfile.profile(includeProtectedAndPrivate)) {
                 ret = dispatchIgnoreVisibility.execute(frame, object, toJavaString.executeToJavaString(name));
@@ -1592,11 +1603,7 @@ public abstract class KernelNodes {
                 return true;
             } else if (respondToMissingProfile
                     .profile(dispatchRespondToMissing.execute(frame, object, "respond_to_missing?"))) {
-                return respondToMissing(
-                        frame,
-                        object,
-                        getSymbol(name.rope),
-                        includeProtectedAndPrivate);
+                return respondToMissing(object, getSymbol(name.rope), includeProtectedAndPrivate);
             } else {
                 return false;
             }
@@ -1610,6 +1617,7 @@ public abstract class KernelNodes {
                 boolean includeProtectedAndPrivate,
                 @Cached ToJavaStringNode toJavaString) {
             final boolean ret;
+            useCallerRefinements(frame);
 
             if (ignoreVisibilityProfile.profile(includeProtectedAndPrivate)) {
                 ret = dispatchIgnoreVisibility.execute(frame, object, toJavaString.executeToJavaString(name));
@@ -1621,14 +1629,13 @@ public abstract class KernelNodes {
                 return true;
             } else if (respondToMissingProfile
                     .profile(dispatchRespondToMissing.execute(frame, object, "respond_to_missing?"))) {
-                return respondToMissing(frame, object, name, includeProtectedAndPrivate);
+                return respondToMissing(object, name, includeProtectedAndPrivate);
             } else {
                 return false;
             }
         }
 
-        private boolean respondToMissing(VirtualFrame frame, Object object, RubySymbol name,
-                boolean includeProtectedAndPrivate) {
+        private boolean respondToMissing(Object object, RubySymbol name, boolean includeProtectedAndPrivate) {
             if (respondToMissingNode == null) {
                 CompilerDirectives.transferToInterpreterAndInvalidate();
                 respondToMissingNode = insert(DispatchNode.create());
@@ -1641,6 +1648,17 @@ public abstract class KernelNodes {
 
             return booleanCastNode.executeToBoolean(
                     respondToMissingNode.call(object, "respond_to_missing?", name, includeProtectedAndPrivate));
+        }
+
+        private void useCallerRefinements(VirtualFrame frame) {
+            if (frame != null) {
+                if (readCallerFrame == null) {
+                    CompilerDirectives.transferToInterpreterAndInvalidate();
+                    readCallerFrame = insert(ReadCallerFrameNode.create());
+                }
+                DeclarationContext context = RubyArguments.getDeclarationContext(readCallerFrame.execute(frame));
+                RubyArguments.setDeclarationContext(frame, context);
+            }
         }
     }
 

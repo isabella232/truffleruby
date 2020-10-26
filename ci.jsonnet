@@ -132,7 +132,7 @@ local part_definitions = {
       },
 
       environment+: {
-        HOST_VM: "server",
+        HOST_VM: "jruby",
         HOST_VM_CONFIG: "default",
         GUEST_VM: "jruby",
         GUEST_VM_CONFIG: "indy",
@@ -146,12 +146,6 @@ local part_definitions = {
     },
     
     sqlite331: { packages+: { sqlite: ">=3.31" } },
-
-    limit_compiler_threads: { # GR-25942
-      environment+: {
-        TRUFFLERUBYOPT+: " --experimental-options --engine.CompilerThreads=2",
-      },
-    },
 
     multi_tier: {
       environment+: {
@@ -446,6 +440,7 @@ local part_definitions = {
     asciidoctor: { benchmarks+:: ["asciidoctor"] },
     other_extra: { benchmarks+:: ["savina"] },
     other: { benchmarks+:: ["micro", "image-demo", "optcarrot", "synthetic", "rubykon", "liquid"] },
+    warmup: { benchmarks+:: ["ruby-warmup"] },
 
     server: {
       local build = self,
@@ -499,17 +494,17 @@ local composition_environment = utils.add_inclusion_tracking(part_definitions, "
       "ruby-test-gems-linux":        $.platform.linux  + $.jdk.v8  + $.env.jvm + gate + $.use.gem_test_pack + $.run.test_gems,
       "ruby-test-gems-darwin":       $.platform.darwin + $.jdk.v8  + $.env.jvm + gate + $.use.gem_test_pack + $.run.test_gems,
       "ruby-test-ecosystem-linux":   $.platform.linux  + $.jdk.v8  + $.env.jvm + gate + $.use.node + $.use.sqlite331 + $.use.gem_test_pack + $.run.test_ecosystem,
-      "ruby-test-standalone-linux":  $.platform.linux  + $.jdk.v8 + gate_no_build + $.run.test_make_standalone_distribution + $.use.limit_compiler_threads,
+      "ruby-test-standalone-linux":  $.platform.linux  + $.jdk.v8 + gate_no_build + $.run.test_make_standalone_distribution,
 
       "ruby-test-compiler-graal-core":          $.platform.linux + $.jdk.v8  + $.env.jvm_ce + gate + $.use.truffleruby + $.run.test_compiler,
       "ruby-test-compiler-graal-core-11":       $.platform.linux + $.jdk.v11 + $.env.jvm_ce + gate + $.use.truffleruby + $.run.test_compiler,
       "ruby-test-compiler-graal-enterprise":    $.platform.linux + $.jdk.v8 +  $.env.jvm_ee + gate + $.use.truffleruby + $.run.test_compiler,
       "ruby-test-compiler-graal-enterprise-11": $.platform.linux + $.jdk.v11 + $.env.jvm_ee + gate + $.use.truffleruby + $.run.test_compiler,
 
-      "ruby-test-svm-graal-core-linux":        $.platform.linux  + $.jdk.v8  + $.env.native_RemoveSaturatedTypeFlows + gate + native_tests + $.use.limit_compiler_threads,
-      "ruby-test-svm-graal-core-linux-11":     $.platform.linux  + $.jdk.v11 + $.env.native                          + gate + native_tests + $.use.limit_compiler_threads,
-      "ruby-test-svm-graal-core-darwin":       $.platform.darwin + $.jdk.v8  + $.env.native_RemoveSaturatedTypeFlows + gate + native_tests + $.use.limit_compiler_threads,
-      "ruby-test-svm-graal-core-darwin-11":    $.platform.darwin + $.jdk.v11 + $.env.native                          + gate + native_tests + $.use.limit_compiler_threads,
+      "ruby-test-svm-graal-core-linux":        $.platform.linux  + $.jdk.v8  + $.env.native_RemoveSaturatedTypeFlows + gate + native_tests,
+      "ruby-test-svm-graal-core-linux-11":     $.platform.linux  + $.jdk.v11 + $.env.native                          + gate + native_tests,
+      "ruby-test-svm-graal-core-darwin":       $.platform.darwin + $.jdk.v8  + $.env.native_RemoveSaturatedTypeFlows + gate + native_tests,
+      "ruby-test-svm-graal-core-darwin-11":    $.platform.darwin + $.jdk.v11 + $.env.native                          + gate + native_tests,
       "ruby-test-svm-graal-enterprise-linux":  $.platform.linux  + $.jdk.v8  + $.env.native_ee                       + gate + native_tests,
       "ruby-test-svm-graal-enterprise-darwin": $.platform.darwin + $.jdk.v8  + $.env.native_ee                       + gate + native_tests,
     },
@@ -614,6 +609,17 @@ local composition_environment = utils.add_inclusion_tracking(part_definitions, "
       "ruby-benchmarks-asciidoctor-svm-graal-core-multi-tier": shared + asciidoctor + svm_configurations["svm-graal-core"] + $.use.multi_tier,
       "ruby-benchmarks-asciidoctor-svm-graal-enterprise": shared + asciidoctor + svm_configurations["svm-graal-enterprise"],
       "ruby-benchmarks-asciidoctor-svm-graal-enterprise-multi-tier": shared + asciidoctor + svm_configurations["svm-graal-enterprise"] + $.use.multi_tier,
+      local warmup = $.benchmark.runner + $.benchmark.warmup + { timelimit: "00:55:00" },
+      "ruby-benchmarks-warmup-mri": shared + warmup + other_rubies.mri,
+      "ruby-benchmarks-warmup-jruby": shared + warmup + other_rubies.jruby,
+      "ruby-benchmarks-warmup-graal-core": shared + warmup + graal_configurations["graal-core"],
+      "ruby-benchmarks-warmup-graal-core-multi-tier": shared + warmup + graal_configurations["graal-core"] + $.use.multi_tier,
+      "ruby-benchmarks-warmup-graal-enterprise": shared + warmup + graal_configurations["graal-enterprise"],
+      "ruby-benchmarks-warmup-graal-enterprise-multi-tier": shared + warmup + graal_configurations["graal-enterprise"] + $.use.multi_tier,
+      "ruby-benchmarks-warmup-svm-graal-core": shared + warmup + svm_configurations["svm-graal-core"],
+      "ruby-benchmarks-warmup-svm-graal-core-multi-tier": shared + warmup + svm_configurations["svm-graal-core"] + $.use.multi_tier,
+      "ruby-benchmarks-warmup-svm-graal-enterprise": shared + warmup + svm_configurations["svm-graal-enterprise"],
+      "ruby-benchmarks-warmup-svm-graal-enterprise-multi-tier": shared + warmup + svm_configurations["svm-graal-enterprise"] + $.use.multi_tier,
 
       local other = $.benchmark.runner + $.benchmark.other + $.benchmark.other_extra + { timelimit: "00:40:00" },
       local svm_other = $.benchmark.runner + $.benchmark.other + { timelimit: "01:00:00" },

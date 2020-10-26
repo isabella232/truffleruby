@@ -7,7 +7,7 @@ suite = {
             {
                 "name": "sulong",
                 "subdir": True,
-                "version": "c6b5adcbcda4937e360e3dcf8b27298ef799bc86",
+                "version": "e55dc6d679bd4065846265c00f38b79325af8166",
                 "urls": [
                     {"url": "https://github.com/oracle/graal.git", "kind": "git"},
                     {"url": "https://curio.ssw.jku.at/nexus/content/repositories/snapshots", "kind": "binary"},
@@ -51,10 +51,10 @@ suite = {
             "maven": {
                 "groupId": "org.jruby.joni",
                 "artifactId": "joni",
-                "version": "2.1.30"
+                "version": "2.1.40"
             },
-            "sha1": "a23a567521996c2a412688763892cddbca7c3bd6",
-            "sourceSha1": "a1444342fc0c275613d43ca3d0a71ce919d85b18",
+            "sha1": "18766fa1b624d615d3a1cac513bf729adfd6b38f",
+            "sourceSha1": "85bb9546e4c63f00f02531eeab795685566baf7b",
             "license": ["MIT"],
         },
 
@@ -62,10 +62,10 @@ suite = {
             "maven": {
                 "groupId": "org.jruby.jcodings",
                 "artifactId": "jcodings",
-                "version": "1.0.45"
+                "version": "1.0.55"
             },
-            "sha1": "029404c013b3d51a8c60fac80409bb3d64dfb816",
-            "sourceSha1": "702693ea01e006385f2834ad56dad54b7a4ca248",
+            "sha1": "57169ef6964f44aef67b247cb87f053d93182488",
+            "sourceSha1": "071891163f601416a5426d8f05b7d46139217ff1",
             "license": ["MIT"],
         },
     },

@@ -75,7 +75,6 @@ import static org.truffleruby.core.string.StringSupport.MBCLEN_NEEDMORE_P;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 
-import com.oracle.truffle.api.dsl.CachedLanguage;
 import org.jcodings.Config;
 import org.jcodings.Encoding;
 import org.jcodings.exception.EncodingException;
@@ -98,8 +97,6 @@ import org.truffleruby.builtins.YieldingCoreMethodNode;
 import org.truffleruby.core.CoreLibrary;
 import org.truffleruby.core.array.ArrayUtils;
 import org.truffleruby.core.array.RubyArray;
-import org.truffleruby.core.binding.BindingNodes;
-import org.truffleruby.core.binding.RubyBinding;
 import org.truffleruby.core.cast.BooleanCastNode;
 import org.truffleruby.core.cast.ProcOrNullNode;
 import org.truffleruby.core.cast.TaintResultNode;
@@ -118,7 +115,6 @@ import org.truffleruby.core.format.unpack.ArrayResult;
 import org.truffleruby.core.format.unpack.UnpackCompiler;
 import org.truffleruby.core.kernel.KernelNodes;
 import org.truffleruby.core.kernel.KernelNodesFactory;
-import org.truffleruby.core.kernel.TruffleKernelNodes.SetFrameAndThreadLocalVariable;
 import org.truffleruby.core.klass.RubyClass;
 import org.truffleruby.core.numeric.FixnumLowerNode;
 import org.truffleruby.core.numeric.FixnumOrBignumNode;
@@ -168,12 +164,13 @@ import org.truffleruby.language.RubyBaseNode;
 import org.truffleruby.language.RubyContextNode;
 import org.truffleruby.language.RubyNode;
 import org.truffleruby.language.Visibility;
-import org.truffleruby.language.arguments.ReadCallerFrameNode;
+import org.truffleruby.language.arguments.ReadCallerStorageNode;
 import org.truffleruby.language.control.RaiseException;
 import org.truffleruby.language.dispatch.DispatchNode;
 import org.truffleruby.language.library.RubyLibrary;
 import org.truffleruby.language.objects.AllocateHelperNode;
 import org.truffleruby.language.objects.WriteObjectFieldNode;
+import org.truffleruby.language.threadlocal.SpecialVariableStorage;
 import org.truffleruby.language.yield.YieldNode;
 import org.truffleruby.utils.Utils;
 
@@ -183,6 +180,7 @@ import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.Cached.Shared;
 import com.oracle.truffle.api.dsl.CachedContext;
+import com.oracle.truffle.api.dsl.CachedLanguage;
 import com.oracle.truffle.api.dsl.CreateCast;
 import com.oracle.truffle.api.dsl.Fallback;
 import com.oracle.truffle.api.dsl.GenerateUncached;
@@ -465,14 +463,14 @@ public abstract class StringNodes {
         }
 
         @Specialization(guards = "!isRubyString(b)")
-        protected boolean equal(VirtualFrame frame, RubyString a, Object b) {
+        protected boolean equal(RubyString a, Object b) {
             if (respondToNode == null) {
                 CompilerDirectives.transferToInterpreterAndInvalidate();
                 respondToNode = insert(KernelNodesFactory.RespondToNodeFactory.create(null, null, null));
             }
 
             if (respondToNode
-                    .executeDoesRespondTo(frame, b, coreStrings().TO_STR.createInstance(getContext()), false)) {
+                    .executeDoesRespondTo(null, b, coreStrings().TO_STR.createInstance(getContext()), false)) {
                 if (objectEqualNode == null) {
                     CompilerDirectives.transferToInterpreterAndInvalidate();
                     objectEqualNode = insert(DispatchNode.create());
@@ -710,11 +708,11 @@ public abstract class StringNodes {
         // region Regexp Slice Specializations
 
         @Specialization
-        protected Object slice1(VirtualFrame frame, RubyString string, RubyRegexp regexp, NotProvided capture,
+        protected Object sliceCapture0(VirtualFrame frame, RubyString string, RubyRegexp regexp, NotProvided capture,
                 @Cached DispatchNode callNode,
-                @Cached ReadCallerFrameNode readCallerNode,
-                @Cached SetFrameAndThreadLocalVariable setFrameAndThreadLocalVariable,
-                @CachedLanguage RubyLanguage language) {
+                @Cached ReadCallerStorageNode readCallerNode,
+                @Cached ConditionProfile unsetProfile,
+                @Cached ConditionProfile sameThreadProfile) {
             return sliceCapture(
                     frame,
                     string,
@@ -722,25 +720,25 @@ public abstract class StringNodes {
                     0,
                     callNode,
                     readCallerNode,
-                    setFrameAndThreadLocalVariable,
-                    language);
+                    unsetProfile,
+                    sameThreadProfile);
         }
 
         @Specialization(guards = "wasProvided(capture)")
         protected Object sliceCapture(VirtualFrame frame, RubyString string, RubyRegexp regexp, Object capture,
                 @Cached DispatchNode callNode,
-                @Cached ReadCallerFrameNode readCallerNode,
-                @Cached SetFrameAndThreadLocalVariable setFrameAndThreadLocalVariable,
-                @CachedLanguage RubyLanguage language) {
+                @Cached ReadCallerStorageNode readCallerStorageNode,
+                @Cached ConditionProfile unsetProfile,
+                @Cached ConditionProfile sameThreadProfile) {
             final Object matchStrPair = callNode.call(string, "subpattern", regexp, capture);
 
-            final RubyBinding binding = BindingNodes.createBinding(getContext(), readCallerNode.execute(frame));
+            final SpecialVariableStorage storage = readCallerStorageNode.execute(frame);
             if (matchStrPair == nil) {
-                setFrameAndThreadLocalVariable.execute(language.coreSymbols.BACKREF, nil, binding);
+                storage.setLastMatch(nil, getContext(), unsetProfile, sameThreadProfile);
                 return nil;
             } else {
                 final Object[] array = (Object[]) ((RubyArray) matchStrPair).store;
-                setFrameAndThreadLocalVariable.execute(language.coreSymbols.BACKREF, array[0], binding);
+                storage.setLastMatch(array[0], getContext(), unsetProfile, sameThreadProfile);
                 return array[1];
             }
         }
@@ -1408,6 +1406,12 @@ public abstract class StringNodes {
     public abstract static class HashNode extends CoreMethodArrayArgumentsNode {
 
         protected static final int CLASS_SALT = 54008340; // random number, stops hashes for similar values but different classes being the same, static because we want deterministic hashes
+
+        public static HashNode create() {
+            return StringNodesFactory.HashNodeFactory.create(null);
+        }
+
+        public abstract long execute(RubyString string);
 
         @Specialization
         protected long hash(RubyString string,

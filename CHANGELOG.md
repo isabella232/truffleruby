@@ -17,6 +17,7 @@ Bug fixes:
 * Use expanded load paths for feature matching (#1501).
 * Fixed `SystemStackError` sometimes replaced by an internal Java `NoClassDefFoundError` on JVM (#1743).
 * Fixed constant/identifier detection in lexer for non-ASCII encodings (#2079, #2102, @ivoanjo).
+* Fixed parsing of `--jvm` as an application argument (#2108).
 
 Compatibility:
 
@@ -48,12 +49,16 @@ Compatibility:
 * Avoid infinite recursion when redefining `Warning#warn` and calling `Kernel#warn` (#2109).
 * Convert objects with `#to_path` in `$LOAD_PATH` (#2119).
 * Handle the functions being native for `rb_thread_call_without_gvl()` (#2090).
+* Support refinements for Kernel#respond_to? (#2120, @ssnickolay)
+* JCodings has been updated from 1.0.45 to 1.0.55.
+* Joni has been updated from 2.1.30 to 2.1.40.
 
 Performance:
 
 * Calls with a literal block are no longer always split but instead the decision is made by the Truffle splitting heuristic.
 * `Symbol#to_proc` is now AST-inlined in order to not rely on splitting and to avoid needing the caller frame to find refinements which apply.
 * `Symbol#to_proc` is now globally cached per Symbol and refinements, to avoid creating many redundant `CallTargets`.
+* Setting and access to the special variables `$~` and `$_` has been refactored to require less splitting.
 
 Changes:
 
