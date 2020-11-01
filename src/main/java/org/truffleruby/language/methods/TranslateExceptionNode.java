@@ -28,7 +28,7 @@ import org.truffleruby.language.control.RaiseException;
 
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import com.oracle.truffle.api.TruffleException;
+import com.oracle.truffle.api.exception.AbstractTruffleException;
 import com.oracle.truffle.api.TruffleStackTrace;
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.CachedContext;
@@ -109,9 +109,9 @@ public abstract class TranslateExceptionNode extends RubyBaseNode {
             throw exception;
         } catch (Throwable exception) {
             errorProfile.enter();
-            if (exception instanceof TruffleException && !((TruffleException) exception).isInternalError()) {
+            if (exception instanceof AbstractTruffleException && !((AbstractTruffleException) exception).isInternalError()) {
                 // A foreign exception
-                return new RaiseException(context, translateTruffleException(context, exception), true);
+                return new RaiseException(context, translateAbstractTruffleException(context, exception), true);
             } else {
                 // An internal exception
                 CompilerDirectives.transferToInterpreter(/* internal exceptions are fatal */);
@@ -237,8 +237,8 @@ public abstract class TranslateExceptionNode extends RubyBaseNode {
     }
 
     @TruffleBoundary
-    private RubyException translateTruffleException(RubyContext context, Throwable exception) {
-        assert exception instanceof TruffleException;
+    private RubyException translateAbstractTruffleException(RubyContext context, Throwable exception) {
+        assert exception instanceof AbstractTruffleException;
 
         logJavaException(context, this, exception);
 
@@ -282,8 +282,8 @@ public abstract class TranslateExceptionNode extends RubyBaseNode {
                 // Java exception, print it formatted like a Ruby exception
                 builder.append(BacktraceFormatter.formatJavaThrowableMessage(t)).append('\n');
 
-                if (t instanceof TruffleException) {
-                    lastBacktrace = new Backtrace((TruffleException) t);
+                if (t instanceof AbstractTruffleException) {
+                    lastBacktrace = new Backtrace((AbstractTruffleException) t);
                 } else {
                     appendJavaStackTrace(t, builder);
 

@@ -24,7 +24,7 @@ import org.truffleruby.language.RubyRootNode;
 import org.truffleruby.language.control.RaiseException;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import com.oracle.truffle.api.TruffleException;
+import com.oracle.truffle.api.exception.AbstractTruffleException;
 import com.oracle.truffle.api.TruffleStackTrace;
 import com.oracle.truffle.api.TruffleStackTraceElement;
 import com.oracle.truffle.api.nodes.Node;
@@ -93,7 +93,7 @@ public class Backtrace {
     /** Creates a backtrace for the given Truffle exception, setting the {@link #getLocation() location} and
      * {@link #getSourceLocation() source location} accordingly, and computing the activations eagerly (since the
      * exception itself is not retained). */
-    public Backtrace(TruffleException exception) {
+    public Backtrace(AbstractTruffleException exception) {
         assert !(exception instanceof RaiseException);
         this.location = exception.getLocation();
         this.sourceLocation = exception.getSourceLocation();
@@ -189,7 +189,7 @@ public class Backtrace {
         RaiseException newRaiseException = new RaiseException(
                 context,
                 exception,
-                this.raiseException.isInternalError());
+                this.raiseException.isException());
         // Copy the TruffleStackTrace
         //noinspection ThrowableNotThrown
         TruffleStackTrace.fillIn(this.raiseException);
@@ -212,7 +212,7 @@ public class Backtrace {
         }
 
         // The stacktrace is computed here if it was not already computed and stored in the
-        // TruffleException with TruffleStackTraceElement.fillIn().
+        // AbstractTruffleException with TruffleStackTraceElement.fillIn().
         final List<TruffleStackTraceElement> fullStackTrace = TruffleStackTrace.getStackTrace(truffleException);
         assert fullStackTrace != null;
 

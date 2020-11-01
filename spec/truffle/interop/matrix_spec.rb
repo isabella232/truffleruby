@@ -52,12 +52,12 @@ describe 'Interop:' do
   # Interop::InvalidArrayIndexException  -> InvalidArrayIndexException
   # Interop::UnknownIdentifierException  -> UnknownIdentifierException
   # Interop::UnsupportedTypeException    -> UnsupportedTypeException
-  # e.is_a?(StandardError)               -> is alllowed to bubble up, it is a TruffleException
+  # e.is_a?(StandardError)               -> is alllowed to bubble up, it is a AbstractTruffleException
   #
   # * All Interop::* exceptions above inherit from Interop::InteropException < Exception
   #   Stands apart from normal Ruby exceptions so it cannot be rescued accidentally.
   # * Interop.invoke_member should check arity explicitly and raise ArgumentError (<- ArityException).
-  #   Other exceptions are allowed to bubble up, they are TruffleExceptions
+  #   Other exceptions are allowed to bubble up, they are AbstractTruffleExceptions
   #
   # == Exception raised by Interop methods <-
   # Polyglot::UnsupportedMessageError     <- UnsupportedMessageException
